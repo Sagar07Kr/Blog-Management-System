@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { getCurrentUserApi, getPostsApi } from './api.js'
-import LoginForm from './components/LoginForm.jsx'
 import AdminDashboard from './components/AdminDashboard.jsx'
+import Login from './pages/Login.jsx'
+import Register from './pages/Register.jsx'
 import './App.css'
 
 function formatDate(date) {
@@ -131,9 +133,10 @@ function PublicFeed({ onLogin }) {
 }
 
 export default function App() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [currentUser, setCurrentUser] = useState(null)
   const [isAuthChecking, setIsAuthChecking] = useState(() => Boolean(localStorage.getItem('token')))
-  const [showLogin, setShowLogin] = useState(false)
   const [alert, setAlert] = useState(null)
   const alertTimerRef = useRef(null)
 
@@ -145,11 +148,6 @@ export default function App() {
   }, [])
 
   const handleAlertError = useCallback((message) => showAlert(message, 'error'), [showAlert])
-  const handleLoginSuccess = useCallback((user) => {
-    setCurrentUser(user)
-    setShowLogin(false)
-    showAlert(`Welcome, ${user.name || 'User'}!`, 'success')
-  }, [showAlert])
   const handleLogout = useCallback(() => {
     localStorage.removeItem('token')
     setCurrentUser(null)
@@ -176,6 +174,7 @@ export default function App() {
   }, [showAlert])
 
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin'
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register'
 
   return (
     <div className="app-container">
@@ -190,11 +189,12 @@ export default function App() {
       )}
       {alert && <div className={`alert-banner alert-${alert.type}`} role="alert"><span>{alert.message}</span><button type="button" className="alert-close" onClick={() => setAlert(null)} aria-label="Dismiss alert">✕</button></div>}
       <main className="app-main">
-        {isAuthChecking ? <div className="state-box"><p>Checking authentication...</p></div>
+        {isAuthPage ? (
+          location.pathname === '/login' ? <Login /> : <Register />
+        ) : isAuthChecking ? <div className="state-box"><p>Checking authentication...</p></div>
           : currentUser && isAdmin ? <AdminDashboard onError={handleAlertError} onSuccess={(message) => showAlert(message, 'success')} />
             : currentUser ? <div className="access-denied-box"><h2>Access Denied</h2><p>You must have administrator privileges to view the dashboard.</p><button type="button" className="btn btn-primary" onClick={handleLogout}>Sign Out</button></div>
-              : showLogin ? <LoginForm onLoginSuccess={handleLoginSuccess} onError={handleAlertError} />
-                : <PublicFeed onLogin={() => setShowLogin(true)} />}
+              : <PublicFeed onLogin={() => navigate('/login')} />}
       </main>
       <footer className="app-footer"><p>Blog Management System &bull; College Assignment</p></footer>
     </div>
