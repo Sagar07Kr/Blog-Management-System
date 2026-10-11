@@ -1,18 +1,12 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { getCurrentUserApi, getPostsApi } from './api.js'
+import LoginForm from './components/LoginForm.jsx'
+import AdminDashboard from './components/AdminDashboard.jsx'
 import './App.css'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-
-function getPostIdFromPath() {
-  const match = window.location.pathname.match(/^\/posts\/([^/]+)$/)
-  return match ? decodeURIComponent(match[1]) : null
-}
 
 function formatDate(date) {
   if (!date) return 'Recently published'
-  return new Intl.DateTimeFormat('en', {
-    dateStyle: 'medium',
-  }).format(new Date(date))
+  return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(date))
 }
 
 function authorName(author) {
@@ -39,88 +33,55 @@ function PostCard({ post, onOpen }) {
   )
 }
 
-function LoadingState() {
-  return (
-    <div className="state-panel" role="status" aria-busy="true">
-      <span className="loader" aria-hidden="true" />
-      <p>Gathering the latest stories…</p>
-    </div>
-  )
-}
-
-function ErrorState({ message, onRetry }) {
-  return (
-    <div className="state-panel state-panel--error" role="alert">
-      <p>{message}</p>
-      <button type="button" onClick={onRetry}>Try again</button>
-    </div>
-  )
-}
-
-function App() {
+function PublicFeed({ onLogin }) {
   const [posts, setPosts] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-  const [, refresh] = useReducer((value) => value + 1, 0)
+  const [selectedPostId, setSelectedPostId] = useState(() => {
+    const match = window.location.pathname.match(/^\/posts\/([^/]+)$/)
+    return match ? decodeURIComponent(match[1]) : null
+  })
 
-  const loadPosts = async () => {
-    setLoading(true)
+  const loadPosts = useCallback(async () => {
+    setIsLoading(true)
     setError('')
     try {
-      const response = await fetch(`${API_URL}/posts`)
-      if (!response.ok) throw new Error('The posts could not be loaded right now.')
-      const data = await response.json()
-      setPosts(Array.isArray(data) ? data : data.posts || [])
+      const data = await getPostsApi()
+      setPosts(Array.isArray(data) ? data : [])
     } catch (requestError) {
-      setError(requestError.message)
+      setError(requestError.message || 'The posts could not be loaded right now.')
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
-  }
-
-  useEffect(() => {
-    let active = true
-    const fetchInitialPosts = async () => {
-      try {
-        const response = await fetch(`${API_URL}/posts`)
-        if (!response.ok) throw new Error('The posts could not be loaded right now.')
-        const data = await response.json()
-        if (active) setPosts(Array.isArray(data) ? data : data.posts || [])
-      } catch (requestError) {
-        if (active) setError(requestError.message)
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-
-    fetchInitialPosts()
-    return () => { active = false }
   }, [])
 
   useEffect(() => {
-    const handlePopState = () => refresh()
+    Promise.resolve().then(loadPosts)
+    const handlePopState = () => {
+      const match = window.location.pathname.match(/^\/posts\/([^/]+)$/)
+      setSelectedPostId(match ? decodeURIComponent(match[1]) : null)
+    }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
-
-  const postId = getPostIdFromPath()
-  const selectedPost = postId ? posts.find((post) => post._id === postId) : null
+  }, [loadPosts])
 
   const openPost = (postId) => {
     window.history.pushState({}, '', `/posts/${postId}`)
-    refresh()
+    setSelectedPostId(postId)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const goHome = () => {
     window.history.pushState({}, '', '/')
-    refresh()
+    setSelectedPostId(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const selectedPost = posts.find((post) => post._id === selectedPostId)
+
   if (selectedPost) {
     return (
-      <main className="site-shell">
+      <section className="feed-shell">
         <header className="site-header">
           <button className="brand" type="button" onClick={goHome}>the / journal</button>
           <button className="back-link" type="button" onClick={goHome}>← All stories</button>
@@ -140,15 +101,15 @@ function App() {
             </ul>
           )}
         </article>
-      </main>
+      </section>
     )
   }
 
   return (
-    <main className="site-shell">
+    <section className="feed-shell">
       <header className="site-header">
         <button className="brand" type="button" onClick={goHome}>the / journal</button>
-        <span className="header-note">Ideas worth sharing</span>
+        <button className="feed-login" type="button" onClick={onLogin}>Admin sign in</button>
       </header>
       <section className="masthead">
         <p className="eyebrow">A collection of thoughtful notes</p>
@@ -158,21 +119,84 @@ function App() {
       <section className="feed" aria-labelledby="feed-heading">
         <div className="feed__heading">
           <h2 id="feed-heading">Latest stories</h2>
-          {!loading && !error && <span>{posts.length} {posts.length === 1 ? 'story' : 'stories'}</span>}
+          {!isLoading && !error && <span>{posts.length} {posts.length === 1 ? 'story' : 'stories'}</span>}
         </div>
-        {loading && <LoadingState />}
-        {!loading && error && <ErrorState message={error} onRetry={loadPosts} />}
-        {!loading && !error && posts.length === 0 && (
-          <div className="state-panel"><p>No stories have been published yet.</p></div>
-        )}
-        {!loading && !error && posts.length > 0 && (
-          <div className="post-grid">
-            {posts.map((post) => <PostCard key={post._id} post={post} onOpen={openPost} />)}
-          </div>
-        )}
+        {isLoading && <div className="state-panel" role="status" aria-busy="true"><span className="loader" /> <p>Gathering the latest stories…</p></div>}
+        {!isLoading && error && <div className="state-panel state-panel--error" role="alert"><p>{error}</p><button type="button" onClick={loadPosts}>Try again</button></div>}
+        {!isLoading && !error && posts.length === 0 && <div className="state-panel"><p>No stories have been published yet.</p></div>}
+        {!isLoading && !error && posts.length > 0 && <div className="post-grid">{posts.map((post) => <PostCard key={post._id} post={post} onOpen={openPost} />)}</div>}
       </section>
-    </main>
+    </section>
   )
 }
 
-export default App
+export default function App() {
+  const [currentUser, setCurrentUser] = useState(null)
+  const [isAuthChecking, setIsAuthChecking] = useState(() => Boolean(localStorage.getItem('token')))
+  const [showLogin, setShowLogin] = useState(false)
+  const [alert, setAlert] = useState(null)
+  const alertTimerRef = useRef(null)
+
+  const showAlert = useCallback((message, type = 'error') => {
+    if (!message) return
+    if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
+    setAlert({ message, type })
+    alertTimerRef.current = setTimeout(() => setAlert(null), 4000)
+  }, [])
+
+  const handleAlertError = useCallback((message) => showAlert(message, 'error'), [showAlert])
+  const handleLoginSuccess = useCallback((user) => {
+    setCurrentUser(user)
+    setShowLogin(false)
+    showAlert(`Welcome, ${user.name || 'User'}!`, 'success')
+  }, [showAlert])
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('token')
+    setCurrentUser(null)
+    showAlert('Logged out successfully.', 'success')
+  }, [showAlert])
+
+  useEffect(() => {
+    let isMounted = true
+    const token = localStorage.getItem('token')
+    if (!token) {
+      return undefined
+    }
+    getCurrentUserApi()
+      .then((user) => { if (isMounted) setCurrentUser(user) })
+      .catch((error) => {
+        localStorage.removeItem('token')
+        if (isMounted) showAlert(error.message, 'error')
+      })
+      .finally(() => { if (isMounted) setIsAuthChecking(false) })
+    return () => {
+      isMounted = false
+      if (alertTimerRef.current) clearTimeout(alertTimerRef.current)
+    }
+  }, [showAlert])
+
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin'
+
+  return (
+    <div className="app-container">
+      {currentUser && (
+        <header className="app-header">
+          <h1 className="app-title">Blog Management</h1>
+          <div className="user-bar">
+            <span className="user-label">{currentUser.name} (<strong>{currentUser.role}</strong>)</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handleLogout}>Log Out</button>
+          </div>
+        </header>
+      )}
+      {alert && <div className={`alert-banner alert-${alert.type}`} role="alert"><span>{alert.message}</span><button type="button" className="alert-close" onClick={() => setAlert(null)} aria-label="Dismiss alert">✕</button></div>}
+      <main className="app-main">
+        {isAuthChecking ? <div className="state-box"><p>Checking authentication...</p></div>
+          : currentUser && isAdmin ? <AdminDashboard onError={handleAlertError} onSuccess={(message) => showAlert(message, 'success')} />
+            : currentUser ? <div className="access-denied-box"><h2>Access Denied</h2><p>You must have administrator privileges to view the dashboard.</p><button type="button" className="btn btn-primary" onClick={handleLogout}>Sign Out</button></div>
+              : showLogin ? <LoginForm onLoginSuccess={handleLoginSuccess} onError={handleAlertError} />
+                : <PublicFeed onLogin={() => setShowLogin(true)} />}
+      </main>
+      <footer className="app-footer"><p>Blog Management System &bull; College Assignment</p></footer>
+    </div>
+  )
+}
