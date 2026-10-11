@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { getCurrentUserApi } from './api.js'
 import LoginForm from './components/LoginForm.jsx'
 import AdminDashboard from './components/AdminDashboard.jsx'
+import ProtectedRoute from './components/ProtectedRoute.jsx'
+import CreatePost from './pages/CreatePost.jsx'
+import EditPost from './pages/EditPost.jsx'
 import './App.css'
 
 export default function App() {
@@ -100,7 +104,8 @@ export default function App() {
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin'
 
   return (
-    <div className="app-container">
+    <BrowserRouter>
+      <div className="app-container">
       <header className="app-header">
         <h1 className="app-title">Blog Management</h1>
 
@@ -135,41 +140,65 @@ export default function App() {
       )}
 
       <main className="app-main">
-        {isAuthChecking ? (
-          <div className="state-box">
-            <p>Checking authentication...</p>
-          </div>
-        ) : !currentUser ? (
-          <LoginForm
-            onLoginSuccess={handleLoginSuccess}
-            onError={handleAlertError}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              isAuthChecking ? (
+                <div className="state-box">
+                  <p>Checking authentication...</p>
+                </div>
+              ) : !currentUser ? (
+                <LoginForm
+                  onLoginSuccess={handleLoginSuccess}
+                  onError={handleAlertError}
+                />
+              ) : !isAdmin ? (
+                <div className="access-denied-box">
+                  <h2>Access Denied</h2>
+                  <p>You must have administrator privileges to view the dashboard.</p>
+                  <p className="access-note">
+                    Signed in as <strong>{currentUser.email}</strong> (role: <code>{currentUser.role}</code>).
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleLogout}
+                  >
+                    Sign In as Administrator
+                  </button>
+                </div>
+              ) : (
+                <AdminDashboard
+                  onError={handleAlertError}
+                  onSuccess={handleAlertSuccess}
+                />
+              )
+            }
           />
-        ) : !isAdmin ? (
-          <div className="access-denied-box">
-            <h2>Access Denied</h2>
-            <p>You must have administrator privileges to view the dashboard.</p>
-            <p className="access-note">
-              Signed in as <strong>{currentUser.email}</strong> (role: <code>{currentUser.role}</code>).
-            </p>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleLogout}
-            >
-              Sign In as Administrator
-            </button>
-          </div>
-        ) : (
-          <AdminDashboard
-            onError={handleAlertError}
-            onSuccess={handleAlertSuccess}
+          <Route
+            path="/create-post"
+            element={
+              <ProtectedRoute>
+                <CreatePost />
+              </ProtectedRoute>
+            }
           />
-        )}
+          <Route
+            path="/edit-post/:id"
+            element={
+              <ProtectedRoute>
+                <EditPost />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
       </main>
 
       <footer className="app-footer">
         <p>Blog Management System &bull; College Assignment</p>
       </footer>
     </div>
-  )
+  </BrowserRouter>
+)
 }
